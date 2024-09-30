@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
+	"id": "obsidian-filename-heading-sync",
+	"name": "Filename Heading Sync",
+	"version": "1.0.1",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
+	"description": "Obsidian plugin for keeping the filename with the first heading of a file in sync.",
+	"author": "BartsBitArt",
+	"authorUrl": "https://github.com/BartsBitArt/obsidian-filename-heading-sync",
 	"fundingUrl": "https://obsidian.md/pricing",
 	"isDesktopOnly": false
 }
