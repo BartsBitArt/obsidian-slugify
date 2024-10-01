@@ -9,21 +9,38 @@ import {
 	Setting,
 	TFile,
 } from "obsidian";
+import { type } from "os";
 
 // Symbols to exclude for file naming conventions
 const stockIllegalSymbols = /[\\/:|#^[\]]|\.$/g;
 
 interface FilenameHeadingSyncPluginSettings {
-	userIllegalSymbols: string[];
-	ignoreRegexen: string[];
-	ignoredFiles: { [key: string]: null };
+	userIllegalSymbols: string;
+	fileIgnoreRegexen: string[];
 }
 
 const DEFAULT_SETTINGS: FilenameHeadingSyncPluginSettings = {
-	userIllegalSymbols: [],
-	ignoredFiles: {},
-	ignoreRegexen: [],
+	userIllegalSymbols: "",
+	fileIgnoreRegexen: [
+		'/.*\.excalidraw\.md$/g',
+		],
 };
+
+/** Deserialize a RegExp string into an actual RegExp object
+ * If the regex is invalid return a default regex
+ *
+ * @param {string} regex The string to turn into a regex
+ */
+function deserializeRegExp(regExpString: string): RegExp {
+	const match = regExpString.match(/\/(.*)?\/([a-z]*)/);
+	// If match is null, return empty Regex
+	if (match) {
+		return new RegExp(match[1], match[2]);
+	} else {
+		new Notice(`Invalid RegExp string: "${regExpString}"`);
+		return new RegExp("", "g"); // Or return a default RegExp, e.g. /default/
+	}
+}
 
 export default class FilenameHeadingSyncPlugin extends Plugin {
 	settings: FilenameHeadingSyncPluginSettings;
@@ -31,11 +48,23 @@ export default class FilenameHeadingSyncPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		this.registerEvent(
-			this.app.workspace.on("file-open", (file: TFile) => {
+		this.app.workspace.on("file-open", (file: TFile) => {
+			if (!this.ignoreFile(file)) {
 				this.handleSyncFilenameToHeading(file);
-			}),
-		);
+			}
+		});
+
+		this.app.vault.on("rename", (file: TFile) => {
+			if (!this.ignoreFile(file)) {
+				this.handleSyncFilenameToHeading(file);
+			}
+		});
+
+		this.app.vault.on("modify", (file: TFile) => {
+			if (!this.ignoreFile(file)) {
+				this.handleSyncHeadingToFilename(file);
+			}
+		});
 
 		// This adds an editor command that can perform some operation on the current editor instance
 		this.addCommand({
@@ -51,8 +80,125 @@ export default class FilenameHeadingSyncPlugin extends Plugin {
 		this.addSettingTab(new FilenameHeadingSyncSettingTab(this.app, this));
 	}
 
+	/**
+	 * Syncs the Filename to the first lvl 1 heading
+	 */
 	handleSyncFilenameToHeading(file: TFile) {
-		new Notice('test');
+		const sanitizedHeading = this.sanitizeHeading(file.basename);
+
+		// Format heading
+		let heading = sanitizedHeading.replace(/-/g, " ");
+		heading = "# " + heading[0].toUpperCase() + heading.slice(1);
+
+		this.app.vault.read(file).then((data) => {
+			const lines = data.split("\n");
+			const headingLine = this.getHeadingLine(lines);
+
+			if (headingLine != -1) {
+				lines[headingLine] = heading;
+			} else {
+				lines.unshift(heading);
+			}
+
+			data = lines.join("\n");
+			this.app.vault.modify(file, data);
+		});
+	}
+
+	/**
+	 * Syncs the first lvl 1 heading to the filename.
+	 * If no heading is found creates a first level heading based on the file name
+	 */
+	handleSyncHeadingToFilename(file: TFile) {
+		this.app.vault.read(file).then((data) => {
+			const lines = data.split("\n");
+			const headingLine = this.getHeadingLine(lines);
+
+			if (headingLine != -1) {
+				let heading = this.sanitizeHeading(lines[headingLine]);
+				heading = heading.replace(/ /g, "-");
+				heading = heading.toLowerCase();
+				const newPath = `${file.parent?.path}/${heading}.md`;
+				this.app.fileManager.renameFile(file, newPath);
+			} else {
+				this.handleSyncFilenameToHeading(file);
+			}
+		});
+	}
+
+	ignoreFile(file: TFile): boolean {
+		new Notice(file.path);
+
+		// Check if file is markdown
+		if (file.extension != 'md' && file.extension != 'markdown') {
+			return true;
+		}
+
+		// Check for plugins
+		const fileCache = this.app.metadataCache.getFileCache(file);
+		if (!!fileCache?.frontmatter) {
+			if (!!fileCache.frontmatter['excalidraw-plugin']) {
+				return true;
+			} else if (!!fileCache.frontmatter['kanban-plugin']) {
+				return true;
+			}
+		}
+
+
+		// Check ignore regexen
+		for (let i in this.settings.fileIgnoreRegexen) {
+			const regex = deserializeRegExp(this.settings.fileIgnoreRegexen[i]);
+			let test = regex.exec(file.path)?.toString();
+			if (test != null) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Returns a heading with illegal characters removed
+	 *
+	 * @param {string} heading The heading you want to sanitize
+	 */
+	sanitizeHeading(heading: string): string {
+		heading = heading.replace(stockIllegalSymbols, "");
+		heading = heading.replace(
+			deserializeRegExp(this.settings.userIllegalSymbols),
+			"",
+		);
+		heading = heading.trim();
+		return heading;
+	}
+
+	/**
+	 * Returns the line number of the first line after the yaml.
+	 * If there is no yaml returns 0
+	 *
+	 * @param {string[]} lines The file split on new line.
+	 */
+	getStartLine(lines: string[]): number {
+		let startingLine = 0;
+		if (lines[startingLine] == "---") {
+			startingLine = lines.indexOf("---", 1) + 1;
+		}
+		return startingLine;
+	}
+
+	/**
+	 * Returns the linenumber of the first lvl 1 heading.
+	 * If no heading is found returns -1.
+	 *
+	 * @param {string[]} lines The file split on new line.
+	 */
+	getHeadingLine(lines: string[]): number {
+		const startLine = this.getStartLine(lines);
+		for (let i = startLine; i < lines.length; i++) {
+			if (lines[i].startsWith("# ")) {
+				return i;
+			}
+		}
+		return -1;
 	}
 
 	onunload() {}
@@ -82,7 +228,7 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 
 		containerEl.empty();
-
+		// Intro
 		containerEl.createEl("h2", { text: "Filename Heading Sync" });
 		containerEl.createEl("p", {
 			text: "This plugin will overwrite the first heading found in a file with the filename.",
@@ -91,6 +237,33 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 			text: "If no header is found, will insert a new one at the first line (after frontmatter).",
 		});
 
+		// Illegal characters
+		new Setting(containerEl)
+			.setName("Custom Illegal Characters/Strings Regex")
+			.setDesc("Make your own regex for illegal heading symbols.")
+			.addText((text) =>
+				text
+					.setPlaceholder("/@#(/g")
+					.setValue(this.plugin.settings.userIllegalSymbols)
+					.onChange(async (value) => {
+						this.plugin.settings.userIllegalSymbols =
+							deserializeRegExp(value).toString();
+						if (
+							this.plugin.settings.userIllegalSymbols ==
+								"/(?:)/g" ||
+							this.plugin.settings.userIllegalSymbols == "/(?:)/"
+						) {
+							text.setValue("//g");
+						} else {
+							text.setValue(
+								this.plugin.settings.userIllegalSymbols,
+							);
+						}
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		// File ignore
 		new Setting(containerEl)
 			.setName("Add a new file ignore Regex")
 			.setDesc("Add a new Regex for ignoring files.")
@@ -98,22 +271,36 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 				button.setButtonText("Add Regex");
 				button.setCta();
 				button.onClick(() => {
-					this.plugin.settings.ignoreRegexen.push("");
+					this.plugin.settings.fileIgnoreRegexen.push("//g");
 					this.display(); // Re-render settings
 				});
 			});
 
 		// Create a setting for each option in the list
-		this.plugin.settings.ignoreRegexen.forEach((option, index) => {
+		this.plugin.settings.fileIgnoreRegexen.forEach((option, index) => {
 			new Setting(containerEl)
 				.setName(`Regex ${index + 1}`)
 				.addText((text) =>
 					text
-						.setPlaceholder("Enter your Regex")
+						.setPlaceholder("/@#(/g")
 						.setValue(option)
 						.onChange(async (value) => {
-							// Update the value in the settings
-							this.plugin.settings.ignoreRegexen[index] = value;
+							this.plugin.settings.fileIgnoreRegexen[index] =
+								deserializeRegExp(value).toString();
+							if (
+								this.plugin.settings.fileIgnoreRegexen[index] ==
+									"/(?:)/g" ||
+								this.plugin.settings.fileIgnoreRegexen[index] ==
+									"/(?:)/"
+							) {
+								text.setValue("//g");
+							} else {
+								text.setValue(
+									this.plugin.settings.fileIgnoreRegexen[
+										index
+									],
+								);
+							}
 							await this.plugin.saveSettings();
 						}),
 				)
@@ -124,7 +311,10 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 						.setTooltip("Remove this Regex")
 						.onClick(async () => {
 							// Remove the option from the list and refresh the settings UI
-							this.plugin.settings.ignoreRegexen.splice(index, 1);
+							this.plugin.settings.fileIgnoreRegexen.splice(
+								index,
+								1,
+							);
 							await this.plugin.saveSettings();
 							this.display(); // Re-render settings
 						});
