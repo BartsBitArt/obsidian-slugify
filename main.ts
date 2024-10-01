@@ -24,7 +24,7 @@ interface FilenameHeadingSyncPluginSettings {
 
 const DEFAULT_SETTINGS: FilenameHeadingSyncPluginSettings = {
 	userIllegalSymbols: "",
-	fileIgnoreRegexen: ["/.*.excalidraw.md$/g"],
+	fileIgnoreRegexen: ["/.*.excalidraw.md$/g", '/^readme.md$/gi'],
 };
 
 /** Deserialize a RegExp string into an actual RegExp object
@@ -226,8 +226,10 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		const { containerEl } = this;
+		// Reload the vault files for this.updateIgnoredFiles()
+		const files = this.app.vault.getFiles();
 
+		const { containerEl } = this;
 		containerEl.empty();
 		// Intro
 		containerEl.createEl("h2", { text: "Filename Heading Sync" });
@@ -277,8 +279,6 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 				});
 			});
 
-		const files = this.app.vault.getFiles();
-
 		// Create a setting for each option in the list
 		this.plugin.settings.fileIgnoreRegexen.forEach((option, index) => {
 			let textArea: TextAreaComponent;
@@ -308,7 +308,11 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 								);
 							}
 							await this.plugin.saveSettings();
-							this.updateIgnoredFiles(text.getValue(), textArea, files);
+							this.updateIgnoredFiles(
+								text.getValue(),
+								textArea,
+								files,
+							);
 						});
 				})
 				.addTextArea((ta) => {
@@ -334,6 +338,14 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 				});
 		});
 	}
+
+	/**
+	 * Updates a textarea with the files a regex ignores
+	 *
+	 * @param {string} regex The regex to use
+	 * @param {TextAreaComponent} textArea The TextAreaComponent to update
+	 * @param {TFile[]} files The files to search through
+	 */
 	updateIgnoredFiles(
 		regex: string,
 		textArea: TextAreaComponent,
@@ -353,11 +365,9 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 			});
 
 		textArea.setValue(filesIgnored);
-		this.autoResize(textArea.inputEl);
-	}
-	// Function to automatically resize the textarea based on its content
-	autoResize(textAreaEl: HTMLTextAreaElement) {
-		textAreaEl.style.height = "auto"; // Reset height
-		textAreaEl.style.height = `${textAreaEl.scrollHeight}px`; // Set height to the scroll height
+
+		// Automatically resize the textarea based on its content
+		textArea.inputEl.style.height = "auto"; // Reset height
+		textArea.inputEl.style.height = `${textArea.inputEl.scrollHeight}px`; // Set height to the scroll height
 	}
 }
