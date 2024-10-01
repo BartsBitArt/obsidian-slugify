@@ -1,5 +1,6 @@
 import {
 	App,
+	ButtonComponent,
 	Editor,
 	MarkdownView,
 	Modal,
@@ -7,6 +8,8 @@ import {
 	Plugin,
 	PluginSettingTab,
 	Setting,
+	TextAreaComponent,
+	TextComponent,
 	TFile,
 } from "obsidian";
 import { type } from "os";
@@ -21,9 +24,7 @@ interface FilenameHeadingSyncPluginSettings {
 
 const DEFAULT_SETTINGS: FilenameHeadingSyncPluginSettings = {
 	userIllegalSymbols: "",
-	fileIgnoreRegexen: [
-		'/.*\.excalidraw\.md$/g',
-		],
+	fileIgnoreRegexen: ["/.*.excalidraw.md$/g"],
 };
 
 /** Deserialize a RegExp string into an actual RegExp object
@@ -38,7 +39,7 @@ function deserializeRegExp(regExpString: string): RegExp {
 		return new RegExp(match[1], match[2]);
 	} else {
 		new Notice(`Invalid RegExp string: "${regExpString}"`);
-		return new RegExp("", "g"); // Or return a default RegExp, e.g. /default/
+		return new RegExp("$^", "g"); // Or return a default RegExp, e.g. /default/
 	}
 }
 
@@ -126,24 +127,24 @@ export default class FilenameHeadingSyncPlugin extends Plugin {
 		});
 	}
 
+	/**
+	 * Checks if the file should be ignored
+	 */
 	ignoreFile(file: TFile): boolean {
-		new Notice(file.path);
-
 		// Check if file is markdown
-		if (file.extension != 'md' && file.extension != 'markdown') {
+		if (file.extension != "md" && file.extension != "markdown") {
 			return true;
 		}
 
 		// Check for plugins
 		const fileCache = this.app.metadataCache.getFileCache(file);
 		if (!!fileCache?.frontmatter) {
-			if (!!fileCache.frontmatter['excalidraw-plugin']) {
+			if (!!fileCache.frontmatter["excalidraw-plugin"]) {
 				return true;
-			} else if (!!fileCache.frontmatter['kanban-plugin']) {
+			} else if (!!fileCache.frontmatter["kanban-plugin"]) {
 				return true;
 			}
 		}
-
 
 		// Check ignore regexen
 		for (let i in this.settings.fileIgnoreRegexen) {
@@ -276,13 +277,16 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 				});
 			});
 
+		const files = this.app.vault.getFiles();
+
 		// Create a setting for each option in the list
 		this.plugin.settings.fileIgnoreRegexen.forEach((option, index) => {
-			new Setting(containerEl)
-				.setName(`Regex ${index + 1}`)
-				.addText((text) =>
-					text
-						.setPlaceholder("/@#(/g")
+			let textArea: TextAreaComponent;
+			let text: TextComponent;
+			let setting = new Setting(containerEl)
+				.addText((t) => {
+					text = t;
+					text.setPlaceholder("/@#(/g")
 						.setValue(option)
 						.onChange(async (value) => {
 							this.plugin.settings.fileIgnoreRegexen[index] =
@@ -291,7 +295,9 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 								this.plugin.settings.fileIgnoreRegexen[index] ==
 									"/(?:)/g" ||
 								this.plugin.settings.fileIgnoreRegexen[index] ==
-									"/(?:)/"
+									"/(?:)/" ||
+								this.plugin.settings.fileIgnoreRegexen[index] ==
+									"/$^/g"
 							) {
 								text.setValue("//g");
 							} else {
@@ -302,8 +308,15 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 								);
 							}
 							await this.plugin.saveSettings();
-						}),
-				)
+							this.updateIgnoredFiles(text.getValue(), textArea, files);
+						});
+				})
+				.addTextArea((ta) => {
+					textArea = ta;
+					textArea.setDisabled(true);
+					textArea.inputEl.style.minWidth = "39ch";
+					this.updateIgnoredFiles(text.getValue(), textArea, files);
+				})
 				.addExtraButton((button) => {
 					// Add a "Remove" button to delete this option
 					button
@@ -320,5 +333,31 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 						});
 				});
 		});
+	}
+	updateIgnoredFiles(
+		regex: string,
+		textArea: TextAreaComponent,
+		files: TFile[],
+	) {
+		let filesIgnored = "This regex ignores the following files:";
+		files
+			.filter((file) => {
+				const reg = deserializeRegExp(regex);
+				let test = reg.exec(file.path)?.toString();
+				if (test != null) {
+					return true;
+				}
+			})
+			.forEach((file) => {
+				filesIgnored += "\n" + file.path;
+			});
+
+		textArea.setValue(filesIgnored);
+		this.autoResize(textArea.inputEl);
+	}
+	// Function to automatically resize the textarea based on its content
+	autoResize(textAreaEl: HTMLTextAreaElement) {
+		textAreaEl.style.height = "auto"; // Reset height
+		textAreaEl.style.height = `${textAreaEl.scrollHeight}px`; // Set height to the scroll height
 	}
 }
