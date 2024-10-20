@@ -1,11 +1,11 @@
 {
-	"id": "obsidian-filename-heading-sync",
-	"name": "Filename Heading Sync",
-	"version": "1.0.1",
+	"id": "obsidian-slugify",
+	"name": "Slugify",
+	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Obsidian plugin for keeping the filename with the first heading of a file in sync.",
+	"description": "This plugin changes to file name to the slugify'd heading and visa versa",
 	"author": "BartsBitArt",
-	"authorUrl": "https://github.com/BartsBitArt/obsidian-filename-heading-sync",
+	"authorUrl": "https://github.com/BartsBitArt/obsidian-slugify",
 	"fundingUrl": "https://obsidian.md/pricing",
 	"isDesktopOnly": false
 }
