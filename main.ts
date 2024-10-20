@@ -15,12 +15,12 @@ import { type } from "os";
 // Symbols to exclude for file naming conventions
 const stockIllegalSymbols = /[\\/:|#^[\]]|\.$/g;
 
-interface FilenameHeadingSyncPluginSettings {
+interface SlugifyPluginSettings {
 	userIllegalSymbols: string;
 	fileIgnoreRegexen: string[];
 }
 
-const DEFAULT_SETTINGS: FilenameHeadingSyncPluginSettings = {
+const DEFAULT_SETTINGS: SlugifyPluginSettings = {
 	userIllegalSymbols: "/^$/g",
 	fileIgnoreRegexen: ["/.*.excalidraw.md$/g", "/^readme.md$/gi"],
 };
@@ -41,8 +41,8 @@ function deserializeRegExp(regExpString: string): RegExp {
 	}
 }
 
-export default class FilenameHeadingSyncPlugin extends Plugin {
-	settings: FilenameHeadingSyncPluginSettings;
+export default class SlugifyPlugin extends Plugin {
+	settings: SlugifyPluginSettings;
 
 	async onload() {
 		await this.loadSettings();
@@ -76,7 +76,7 @@ export default class FilenameHeadingSyncPlugin extends Plugin {
 		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new FilenameHeadingSyncSettingTab(this.app, this));
+		this.addSettingTab(new SlugifySettingTab(this.app, this));
 	}
 
 	/**
@@ -215,10 +215,10 @@ export default class FilenameHeadingSyncPlugin extends Plugin {
 	}
 }
 
-class FilenameHeadingSyncSettingTab extends PluginSettingTab {
-	plugin: FilenameHeadingSyncPlugin;
+class SlugifySettingTab extends PluginSettingTab {
+	plugin: SlugifyPlugin;
 
-	constructor(app: App, plugin: FilenameHeadingSyncPlugin) {
+	constructor(app: App, plugin: SlugifyPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
