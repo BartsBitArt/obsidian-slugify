@@ -1,9 +1,7 @@
 import {
 	App,
-	ButtonComponent,
 	Editor,
 	MarkdownView,
-	Modal,
 	Notice,
 	Plugin,
 	PluginSettingTab,
@@ -23,8 +21,8 @@ interface FilenameHeadingSyncPluginSettings {
 }
 
 const DEFAULT_SETTINGS: FilenameHeadingSyncPluginSettings = {
-	userIllegalSymbols: "",
-	fileIgnoreRegexen: ["/.*.excalidraw.md$/g", '/^readme.md$/gi'],
+	userIllegalSymbols: "/^$/g",
+	fileIgnoreRegexen: ["/.*.excalidraw.md$/g", "/^readme.md$/gi"],
 };
 
 /** Deserialize a RegExp string into an actual RegExp object
@@ -39,7 +37,7 @@ function deserializeRegExp(regExpString: string): RegExp {
 		return new RegExp(match[1], match[2]);
 	} else {
 		new Notice(`Invalid RegExp string: "${regExpString}"`);
-		return new RegExp("$^", "g"); // Or return a default RegExp, e.g. /default/
+		return new RegExp("^$", "g"); // Or return a default RegExp, e.g. /default/
 	}
 }
 
@@ -254,7 +252,9 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 						if (
 							this.plugin.settings.userIllegalSymbols ==
 								"/(?:)/g" ||
-							this.plugin.settings.userIllegalSymbols == "/(?:)/"
+							this.plugin.settings.userIllegalSymbols ==
+								"/(?:)/" ||
+							this.plugin.settings.userIllegalSymbols == "/^$/g"
 						) {
 							text.setValue("//g");
 						} else {
@@ -274,7 +274,7 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 				button.setButtonText("Add Regex");
 				button.setCta();
 				button.onClick(() => {
-					this.plugin.settings.fileIgnoreRegexen.push("//g");
+					this.plugin.settings.fileIgnoreRegexen.push("/^$/g");
 					this.display(); // Re-render settings
 				});
 			});
@@ -297,7 +297,7 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 								this.plugin.settings.fileIgnoreRegexen[index] ==
 									"/(?:)/" ||
 								this.plugin.settings.fileIgnoreRegexen[index] ==
-									"/$^/g"
+									"/^$/g"
 							) {
 								text.setValue("//g");
 							} else {
@@ -351,7 +351,7 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 		textArea: TextAreaComponent,
 		files: TFile[],
 	) {
-		let filesIgnored = "This regex ignores the following files:";
+		let filesIgnored = "";
 		files
 			.filter((file) => {
 				const reg = deserializeRegExp(regex);
@@ -364,6 +364,12 @@ class FilenameHeadingSyncSettingTab extends PluginSettingTab {
 				filesIgnored += "\n" + file.path;
 			});
 
+		if (filesIgnored.length == 0) {
+			filesIgnored = "This regex ignores no files:";
+		} else {
+			filesIgnored =
+				"This regex ignores the following files:" + filesIgnored;
+		}
 		textArea.setValue(filesIgnored);
 
 		// Automatically resize the textarea based on its content
